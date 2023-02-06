@@ -1,163 +1,170 @@
+#pragma once
+
 #include <coroutine>
-
-namespace co_helper
+#include <future>
+//
+//  Task class for C++ 20 coroutine
+//
+template <typename T>
+struct Task
 {
-    template <typename T>
-    struct Task
+    struct promise_type;
+    using co_handle = std::coroutine_handle<promise_type>;
+
+    co_handle _handle;
+    std::future<T> _future;
+
+    T get() { return _future.get(); }
+
+    struct promise_type : std::promise<T>
     {
-        struct promise_type;
-        using co_handle = std::coroutine_handle<promise_type>;
-        co_handle _handle;
+        std::coroutine_handle<> _prev = nullptr; // previous promise
 
-        struct promise_type
+        Task get_return_object() { return Task{co_handle::from_promise(*this), this->get_future()}; }
+
+        std::suspend_never initial_suspend() { return {}; }
+
+        std::suspend_never final_suspend() noexcept
         {
-            T value;
+            if (_prev)
+                _prev.resume();
 
-            Task get_return_object() { return Task{co_handle::from_promise(*this)}; }
-
-            std::suspend_never initial_suspend() { return {}; }
-
-            std::suspend_never final_suspend() { return {}; }
-
-            void unhandled_exception() { std::rethrow_exception(std::current_exception()); }
-
-            std::suspend_never return_value(T v)
-            {
-                value = v;
-                return {};
-            }
-        };
-
-        T get() { return _handle.promise().value; }
-
-        ~Task()
-        {
-            if (_handle)
-                _handle.destroy();
-        }
-    };
-
-    template <>
-    struct Task<void>
-    {
-        struct promise_type
-        {
-            Task<void> get_return_object() { return {}; }
-            std::suspend_never initial_suspend() { return {}; }
-            std::suspend_never final_suspend() noexcept { return {}; }
-            void return_void() {}
-            void unhandled_exception() { std::rethrow_exception(std::current_exception()); }
-        };
-    };
-
-    template <std::movable T>
-    class Generator
-    {
-    public:
-        struct promise_type
-        {
-            Generator<T> get_return_object()
-            {
-                return Generator{Handle::from_promise(*this)};
-            }
-            static std::suspend_always initial_suspend() noexcept
-            {
-                return {};
-            }
-            static std::suspend_always final_suspend() noexcept
-            {
-                return {};
-            }
-            std::suspend_always yield_value(T value) noexcept
-            {
-                current_value = std::move(value);
-                return {};
-            }
-            // Disallow co_await in generator coroutines.
-            void await_transform() = delete;
-            [[noreturn]] static void unhandled_exception()
-            {
-                throw;
-            }
-
-            std::optional<T> current_value;
-        };
-
-        using Handle = std::coroutine_handle<promise_type>;
-
-        explicit Generator(const Handle coroutine) : m_coroutine{coroutine}
-        {
-        }
-
-        Generator() = default;
-        ~Generator()
-        {
-            if (m_coroutine)
-            {
-                m_coroutine.destroy();
-            }
-        }
-
-        Generator(const Generator &) = delete;
-        Generator &operator=(const Generator &) = delete;
-
-        Generator(Generator &&other) noexcept : m_coroutine{other.m_coroutine}
-        {
-            other.m_coroutine = {};
-        }
-        Generator &operator=(Generator &&other) noexcept
-        {
-            if (this != &other)
-            {
-                if (m_coroutine)
-                {
-                    m_coroutine.destroy();
-                }
-                m_coroutine = other.m_coroutine;
-                other.m_coroutine = {};
-            }
-            return *this;
-        }
-
-        // Range-based for loop support.
-        class Iter
-        {
-        public:
-            void operator++()
-            {
-                m_coroutine.resume();
-            }
-            const T &operator*() const
-            {
-                return *m_coroutine.promise().current_value;
-            }
-            bool operator==(std::default_sentinel_t) const
-            {
-                return !m_coroutine || m_coroutine.done();
-            }
-
-            explicit Iter(const Handle coroutine) : m_coroutine{coroutine}
-            {
-            }
-
-        private:
-            Handle m_coroutine;
-        };
-
-        Iter begin()
-        {
-            if (m_coroutine)
-            {
-                m_coroutine.resume();
-            }
-            return Iter{m_coroutine};
-        }
-        std::default_sentinel_t end()
-        {
             return {};
         }
 
-    private:
-        Handle m_coroutine;
-    };    
-}
+        void unhandled_exception()
+        {
+            this->set_exception(std::current_exception());
+        }
+
+        void return_value(const T &v) noexcept(std::is_nothrow_copy_constructible_v<T>)
+        {
+            this->set_value(v);
+        }
+
+        void return_value(T &&value) noexcept(std::is_nothrow_move_constructible_v<T>)
+        {
+            this->set_value(std::move(value));
+        }
+
+        // auto await_transform(promise_type && p) noexcept
+        // {
+        //     struct awaiter : std::suspend_never
+        //     {
+        //         promise_type&& _p;
+        //         auto await_resume() const noexcept
+        //         {
+        //             return _p.result();
+        //         }
+        //     };
+
+        //     return awaiter{ p };
+        // }
+        // template <typename U>
+        // U &&await_transform(U &&awaitable) noexcept
+        // {
+        //     return static_cast<U &&>(awaitable);
+        // }
+    };
+
+    auto operator co_await()
+    {
+        struct Awaitor
+        {
+            Task &task;
+
+            bool await_ready() const noexcept
+            {
+                using namespace std::chrono_literals;
+                return task._future.wait_for(0s) == std::future_status::ready;
+            }
+
+            T await_resume() const
+            {
+                return task.get();
+            }
+
+            // template <typename PROMISE>
+            void await_suspend(std::coroutine_handle<> h)
+            {
+                task._handle.promise()._prev = h;
+            }
+        };
+
+        return Awaitor{*this};
+    }
+};
+
+template <>
+struct Task<void>
+{
+    struct promise_type;
+    using co_handle = std::coroutine_handle<promise_type>;
+
+    co_handle _handle;
+    std::future<void> _future;
+
+    struct promise_type : std::promise<void>
+    {
+        std::coroutine_handle<> _prev = nullptr; // previous promise
+
+        Task<void> get_return_object()
+        {
+            return Task{co_handle::from_promise(*this), get_future()}; // initialize co_handle, future
+        }
+
+        std::suspend_never initial_suspend() { return {}; }
+
+        auto final_suspend() noexcept
+        {
+            if (_prev)
+                _prev.resume();
+
+            return std::suspend_never();
+        }
+
+        void return_void()
+        {
+            this->set_value();
+        }
+
+        void unhandled_exception()
+        {
+            this->set_exception(std::current_exception());
+        }
+    };
+
+    //
+    // Chain calling
+    //
+    auto operator co_await()
+    {
+        struct Awaitor
+        {
+            Task &task;
+
+            bool await_ready() const noexcept
+            {
+                using namespace std::chrono_literals;
+                return task._future.wait_for(0s) == std::future_status::ready;
+            }
+
+            void await_resume() const
+            {
+                task._future.get();
+            }
+
+            void await_suspend(std::coroutine_handle<> h)
+            {
+                task._handle.promise()._prev = h;
+            }
+        };
+
+        return Awaitor{*this};
+    }
+
+    void get()
+    {
+        _future.get();
+    }
+};

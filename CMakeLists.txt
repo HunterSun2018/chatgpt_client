@@ -1,10 +1,30 @@
 cmake_minimum_required(VERSION 3.0)
 
-set(CMAKE_CXX_COMPILER g++)
+project(test)
+
+#set(CMAKE_CXX_COMPILER g++-12)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED true)
-set(CMAKE_CXX_FLAGS -fcoroutines)
 
-add_executable(test src/main.cpp)
+include_directories(~/boost_1_81_0)
+#link_directories(~/boost_1_81_0/)
 
-target_link_libraries(test pthread cpprest ssl crypto)
+# Library http_client
+add_library(http_client SHARED src/http_client.cpp)
+
+target_link_libraries(http_client pthread ssl crypto) #crypto
+
+include_directories( src/)
+
+# Executable client
+add_executable(client src/main.cpp)
+
+target_link_libraries(client http_client)
+
+# Executable tests
+add_executable(tests tests/main.cpp)
+
+target_link_libraries(tests http_client gtest)
+
+# Install all targets
+install(TARGETS http_client client tests)
