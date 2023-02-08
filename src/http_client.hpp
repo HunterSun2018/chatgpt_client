@@ -1,17 +1,20 @@
 #pragma once
 #include <string_view>
+#include <map>
 #include <memory>
 #include "co_helper.hpp"
 
-namespace http
+namespace Http
 {
     struct Request
     {
+        std::map<std::string, std::string> header;
+        std::string body;
     };
 
     struct Response
     {
-        int status_code = 0;
+        uint status_code = 0;
         std::string body;
     };
 
@@ -31,7 +34,7 @@ namespace http
 
         virtual Task<Response> await_get(std::string_view url) = 0;
 
-        virtual Task<Response> awaitPost(const Request &request) = 0;
+        virtual Task<Response> await_post(std::string_view url, const Request &request) = 0;
     };
 
     using client_ptr = std::shared_ptr<Client>;

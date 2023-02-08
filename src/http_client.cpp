@@ -17,28 +17,29 @@
 #include <boost/asio/awaitable.hpp>
 #include <boost/asio/co_spawn.hpp>
 #include <boost/asio/spawn.hpp>
-//#include <boost/asio/detached.hpp>
-//#include <boost/asio/use_awaitable.hpp>
+// #include <boost/asio/detached.hpp>
+// #include <boost/asio/use_awaitable.hpp>
 
-namespace beast = boost::beast; // from <boost/beast.hpp>
-// namespace http = beast::http;           // from <boost/beast/http.hpp>
+namespace beast = boost::beast;   // from <boost/beast.hpp>
+namespace http = beast::http;     // from <boost/beast/http.hpp>
 namespace net = boost::asio;      // from <boost/asio.hpp>
 namespace ssl = boost::asio::ssl; // from <boost/asio/ssl.hpp>
 using tcp = boost::asio::ip::tcp; // from <boost/asio/ip/tcp.hpp>
+using request = http::request<http::string_body>;
 
 #include "root_certificates.hpp"
 #include "http_client.hpp"
 
 using namespace std;
 
-namespace http
+namespace Http
 {
     // The SSL context is required, and holds certificates
     ssl::context _ctx{ssl::context::tlsv12_client};
     static net::io_context _ioc;
     static net::io_context::work worker(_ioc); // keep ioc.run() alive until ioc calls function stop
     static std::thread dispatch([]()
-                                 {
+                                {
                                      dispatch.detach();
 
                                      load_root_certificates(_ctx);
@@ -106,8 +107,7 @@ namespace http
         do_session(
             std::string host,
             std::string port,
-            std::string target,
-            int version,
+            const request &req,
             beast::http::verb method)
         {
             namespace http = beast::http; // from <boost/beast/http.hpp>
@@ -124,11 +124,6 @@ namespace http
 
             // Make the connection on the IP address we get from a lookup
             co_await stream.async_connect(results);
-
-            // Set up an HTTP GET request message
-            http::request<http::string_body> req{method, target, version};
-            req.set(http::field::host, host);
-            req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
 
             // Set the timeout.
             stream.expires_after(std::chrono::seconds(30));
@@ -167,8 +162,7 @@ namespace http
         do_session(
             std::string host,
             std::string port,
-            std::string target,
-            int version,
+            request req,
             ssl::context &ctx)
         {
             namespace http = beast::http;
@@ -205,11 +199,6 @@ namespace http
             // Perform the SSL handshake
             co_await stream.async_handshake(ssl::stream_base::client);
 
-            // Set up an HTTP GET request message
-            http::request<http::string_body> req{http::verb::get, target, version};
-            req.set(http::field::host, host);
-            req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
-
             // Set the timeout.
             beast::get_lowest_layer(stream).expires_after(std::chrono::seconds(30));
 
@@ -224,10 +213,6 @@ namespace http
 
             // Receive the HTTP response
             co_await http::async_read(stream, b, res);
-
-            // Write the message to standard out
-            ostringstream oss;
-            oss << res;
 
             // Set the timeout.
             beast::get_lowest_layer(stream)
@@ -244,15 +229,16 @@ namespace http
             }
             // if (ec)
             //     throw boost::system::system_error(ec, "shutdown");
+            // Response result{res.result_int(),
+            //                 beast::buffers_to_string(res.body().data())};
 
-            co_return oss.str();
+            co_return beast::buffers_to_string(res.body().data());
         }
 
         static void
         http_request(std::string const &host,
                      std::string const &port,
-                     std::string const &target,
-                     int version,
+                     const request &req,
                      bool is_ssl,
                      function<void(std::exception_ptr e, string &&body)> func)
         {
@@ -264,30 +250,18 @@ namespace http
                 // Launch the asynchronous operation
                 net::co_spawn(
                     _ioc,
-                    do_session(host, port, target, version, _ctx),
+                    do_session(host, port, req, _ctx),
                     // If the awaitable exists with an exception, it gets delivered here as `e`.
                     // This can happen for regular errors, such as connection drops.
                     [=](std::exception_ptr e, string &&body)
                     {
                         func(e, std::move(body));
-                        // cout << body << endl;
-                        // if (!e)
-                        //     return;
-
-                        // try
-                        // {
-                        //     std::rethrow_exception(e);
-                        // }
-                        // catch (std::exception &ex)
-                        // {
-                        //     std::cerr << "Error: " << ex.what() << "\n";
-                        // }
                     });
             }
             else
             {
                 net::co_spawn(_ioc,
-                              do_session(host, port, target, version, beast::http::verb::get),
+                              do_session(host, port, req, beast::http::verb::get),
                               [](std::exception_ptr e)
                               {
                                   if (e)
@@ -318,8 +292,13 @@ namespace http
 
                     auto [protocol, host, port, target] = parse_url(_url);
 
+                    // Set up an HTTP GET request message
+                    request req{http::verb::get, target, version};
+                    req.set(http::field::host, host);
+                    req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
+
                     // Launch the asynchronous operation
-                    http_request(host, port, target, version,
+                    http_request(host, port, req,
                                  protocol == "https" ? true : false,
                                  [&, h](exception_ptr e, string &&body)
                                  {
@@ -337,11 +316,52 @@ namespace http
             co_return co_await awaitable{url.data()};
         }
 
-        virtual Task<Response> awaitPost(const Request &request) override
+        virtual Task<Response> await_post(std::string_view url, const Request &request) override
         {
             Response response;
 
-            co_return response;
+            struct awaitable
+            {
+                // net::io_context &ioc;
+                string _url;
+                Request _request;
+                Response _response;
+
+                bool await_ready() { return false; }
+                void await_suspend(std::coroutine_handle<> h)
+                {
+                    int version = true ? 11 : 10;
+
+                    auto [protocol, host, port, target] = parse_url(_url);
+
+                    // Set up an HTTP GET request message
+                    http::request<http::string_body> req{http::verb::post, target, version};
+                    req.set(http::field::host, host);
+                    req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
+                    req.set(http::field::content_length, to_string(_request.body.length()));
+                    for (auto iter : _request.header)
+                    {
+                        req.set(iter.first, iter.second);
+                    }
+                    req.body() = _request.body;                    
+
+                    // Launch the asynchronous operation
+                    http_request(host, port, req,
+                                 protocol == "https" ? true : false,
+                                 [&, h](exception_ptr e, string &&body)
+                                 {
+                                     _response.body = std::move(body);
+                                     h.resume();
+                                 });
+                }
+
+                Response await_resume()
+                {
+                    return _response;
+                }
+            };
+
+            co_return co_await awaitable{url.data(), request};
         }
     };
 

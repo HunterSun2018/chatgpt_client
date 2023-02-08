@@ -17,9 +17,9 @@ target_link_libraries(http_client pthread ssl crypto) #crypto
 include_directories( src/)
 
 # Executable client
-add_executable(client src/main.cpp)
+add_executable(chat src/main.cpp)
 
-target_link_libraries(client http_client)
+target_link_libraries(chat http_client)
 
 # Executable tests
 add_executable(tests tests/main.cpp)
@@ -27,4 +27,4 @@ add_executable(tests tests/main.cpp)
 target_link_libraries(tests http_client gtest)
 
 # Install all targets
-install(TARGETS http_client client tests)
+install(TARGETS http_client chat tests)

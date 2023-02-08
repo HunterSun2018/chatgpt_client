@@ -17,7 +17,7 @@ TEST(MyTestSuitName, HttpClientCase)
 {
     auto code = [](string_view url) -> Task<int>
     {
-        auto http_client = http::Client::create();
+        auto http_client = Http::Client::create();
 
         auto response = co_await http_client->await_get(url);
 
