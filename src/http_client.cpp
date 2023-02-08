@@ -107,11 +107,9 @@ namespace Http
         do_session(
             std::string host,
             std::string port,
-            const request &req,
+            const request req,
             beast::http::verb method)
         {
-            namespace http = beast::http; // from <boost/beast/http.hpp>
-
             //  These objects perform our I/O
             auto resolver = net::use_awaitable.as_default_on(tcp::resolver(co_await net::this_coro::executor));
             auto stream = net::use_awaitable.as_default_on(beast::tcp_stream(co_await net::this_coro::executor));
@@ -165,7 +163,6 @@ namespace Http
             request req,
             ssl::context &ctx)
         {
-            namespace http = beast::http;
             // These objects perform our I/O
             // They use an executor with a default completion token of use_awaitable
             // This makes our code easy, but will use exceptions as the default error handling,
@@ -343,7 +340,7 @@ namespace Http
                     {
                         req.set(iter.first, iter.second);
                     }
-                    req.body() = _request.body;                    
+                    req.body() = _request.body;
 
                     // Launch the asynchronous operation
                     http_request(host, port, req,
