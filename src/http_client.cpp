@@ -155,13 +155,14 @@ namespace Http
             // res.body().;
         }
 
-        // Performs an HTTPS GET and return the response
+        // Performs an HTTPS request and return the response
         static net::awaitable<std::string>
         do_session(
+            ssl::context &ctx,
             std::string host,
             std::string port,
             request req,
-            ssl::context &ctx)
+            uint timeout_seconds = 30)
         {
             // These objects perform our I/O
             // They use an executor with a default completion token of use_awaitable
@@ -185,19 +186,19 @@ namespace Http
             auto const results = co_await resolver.async_resolve(host, port);
 
             // Set the timeout.
-            beast::get_lowest_layer(stream).expires_after(std::chrono::seconds(30));
+            beast::get_lowest_layer(stream).expires_after(std::chrono::seconds(timeout_seconds));
 
             // Make the connection on the IP address we get from a lookup
             co_await beast::get_lowest_layer(stream).async_connect(results);
 
             // Set the timeout.
-            beast::get_lowest_layer(stream).expires_after(std::chrono::seconds(30));
+            beast::get_lowest_layer(stream).expires_after(std::chrono::seconds(timeout_seconds));
 
             // Perform the SSL handshake
             co_await stream.async_handshake(ssl::stream_base::client);
 
             // Set the timeout.
-            beast::get_lowest_layer(stream).expires_after(std::chrono::seconds(30));
+            beast::get_lowest_layer(stream).expires_after(std::chrono::seconds(timeout_seconds));
 
             // Send the HTTP request to the remote host
             co_await http::async_write(stream, req);
@@ -236,7 +237,9 @@ namespace Http
         http_request(std::string const &host,
                      std::string const &port,
                      const request &req,
+                     uint timeout_seconds,
                      bool is_ssl,
+
                      function<void(std::exception_ptr e, string &&body)> func)
         {
             if (is_ssl)
@@ -247,7 +250,7 @@ namespace Http
                 // Launch the asynchronous operation
                 net::co_spawn(
                     _ioc,
-                    do_session(host, port, req, _ctx),
+                    do_session(_ctx, host, port, req, timeout_seconds),
                     // If the awaitable exists with an exception, it gets delivered here as `e`.
                     // This can happen for regular errors, such as connection drops.
                     [=](std::exception_ptr e, string &&body)
@@ -274,12 +277,13 @@ namespace Http
             }
         }
 
-        virtual Task<Response> await_get(std::string_view url) override
+        virtual Task<Response> await_get(std::string_view url, uint timeout_seconds) override
         {
             struct awaitable
             {
                 // net::io_context &ioc;
                 string _url;
+                uint _timeout_seconds;
                 Response _response;
 
                 bool await_ready() { return false; }
@@ -295,7 +299,7 @@ namespace Http
                     req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
 
                     // Launch the asynchronous operation
-                    http_request(host, port, req,
+                    http_request(host, port, req, _timeout_seconds,
                                  protocol == "https" ? true : false,
                                  [&, h](exception_ptr e, string &&body)
                                  {
@@ -310,10 +314,12 @@ namespace Http
                 }
             };
 
-            co_return co_await awaitable{url.data()};
+            co_return co_await awaitable{url.data(), timeout_seconds};
         }
 
-        virtual Task<Response> await_post(std::string_view url, const Request &request) override
+        virtual Task<Response> await_post(std::string_view url,
+                                          const Request &request,
+                                          uint timeout_seconds) override
         {
             Response response;
 
@@ -322,7 +328,9 @@ namespace Http
                 // net::io_context &ioc;
                 string _url;
                 Request _request;
+                uint _timeout_seconds;
                 Response _response;
+                exception_ptr _e;
 
                 bool await_ready() { return false; }
                 void await_suspend(std::coroutine_handle<> h)
@@ -343,10 +351,11 @@ namespace Http
                     req.body() = _request.body;
 
                     // Launch the asynchronous operation
-                    http_request(host, port, req,
+                    http_request(host, port, req, _timeout_seconds,
                                  protocol == "https" ? true : false,
                                  [&, h](exception_ptr e, string &&body)
                                  {
+                                     _e = e;
                                      _response.body = std::move(body);
                                      h.resume();
                                  });
@@ -354,11 +363,14 @@ namespace Http
 
                 Response await_resume()
                 {
+                    if (_e)
+                        std::rethrow_exception(_e);
+
                     return _response;
                 }
             };
 
-            co_return co_await awaitable{url.data(), request};
+            co_return co_await awaitable{url.data(), request, timeout_seconds};
         }
     };
 

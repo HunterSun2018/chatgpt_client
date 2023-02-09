@@ -5,6 +5,8 @@
 #include <regex>
 #include <thread>
 #include <chrono>
+#include <readline/readline.h>
+#include <readline/history.h>
 #include <fmt/format.h>
 #include <boost/json/src.hpp>
 #include "co_helper.hpp"
@@ -14,6 +16,16 @@ using namespace std;
 
 Task<void> run_chat_gpt(Http::client_ptr client, string_view prompt);
 string ChatGPT_KEY;
+
+namespace color
+{
+    const std::string RED("\033[0;31m");
+    const std::string GREEN("\033[1;32m");
+    const std::string YELLOW("\033[1;33m");
+    const std::string CYAN("\033[0;36m");
+    const std::string MAGENTA("\033[0;35m");
+    const std::string RESET("\033[0m");
+} // namespace color
 
 void initialize()
 {
@@ -27,15 +39,10 @@ int main(int argc, char *argv[])
     // initialize();
 
     std::this_thread::sleep_for(std::chrono::seconds(0));
-    if(auto key = getenv("ChatGPT_KEY");key)
+    if (auto key = getenv("ChatGPT_KEY"); key)
         ChatGPT_KEY = key;
     else
         throw runtime_error("Please run export ChatGPT_KEY='Your Key' first.");
-    // if (argc != 2)
-    // {
-    //     printf("Usage: client url\n");
-    //     return -1;
-    // }
 
     try
     {
@@ -44,15 +51,18 @@ int main(int argc, char *argv[])
 
         do
         {
-            cout << "Please input prompt for chatGPT." << endl;
-            cin >> prompt;
+            cout << color::YELLOW << "Please input prompt for ChatGPT :" << color::RESET << endl;
+            char *cmd = readline("");
 
+            prompt = cmd;
             if (prompt == "quit")
                 break;
 
+            add_history(cmd);
+
             run_chat_gpt(http_client, prompt).get();
 
-            prompt.clear();
+            free(cmd);
         } while (true);
     }
     catch (const std::exception &e)
@@ -87,7 +97,7 @@ std::size_t replace_all(std::string &inout, std::string_view what, std::string_v
         inout.replace(pos, what.length(), with.data(), with.length());
     }
 
-    inout.erase(0, inout.find_first_not_of('\n'));
+    // inout.erase(0, inout.find_first_not_of('\n'));
 
     return count;
 }
@@ -106,21 +116,21 @@ Task<void> run_chat_gpt(Http::client_ptr client, string_view prompt)
     obj["temperature"] = 0;
     obj["max_tokens"] = 2000;
     ostringstream oss;
-    oss << obj;   
+    oss << obj;
 
     Http::Request req;
     req.header["Content-Type"] = "application/json";
     req.header["Authorization"] = "Bearer " + ChatGPT_KEY;
-    req.body = oss.str();    
-
-    auto response = co_await client->await_post(url, req);
-
-    // cout << response.body << endl;
-    if (response.body.empty())
-        co_return;
+    req.body = oss.str();
 
     try
     {
+        auto response = co_await client->await_post(url, req, 120);
+
+        // cout << response.body << endl;
+        if (response.body.empty())
+            co_return;
+
         value result = parse(response.body);
         auto obj = result.as_object();
         if (obj["error"].is_null())
@@ -132,7 +142,7 @@ Task<void> run_chat_gpt(Http::client_ptr client, string_view prompt)
                 replace_all(text, "\\n", "\n");
 
                 cout << "\n"
-                     << "chatGPT : " << text 
+                     << color::GREEN << "ChatGPT : " << color::RESET << text
                      << "\n"
                      << endl;
             }
@@ -141,6 +151,10 @@ Task<void> run_chat_gpt(Http::client_ptr client, string_view prompt)
         {
             cout << "\nchatGPT : " << obj["error"].as_object()["message"].as_string() << endl;
         }
+    }
+    catch (const boost::system::system_error &ec)
+    {
+        std::cerr << ec.code() << endl;
     }
     catch (const std::exception &e)
     {

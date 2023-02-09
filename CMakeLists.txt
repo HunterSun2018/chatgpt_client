@@ -19,7 +19,7 @@ include_directories( src/)
 # Executable client
 add_executable(chat src/main.cpp)
 
-target_link_libraries(chat http_client)
+target_link_libraries(chat http_client readline)
 
 # Executable tests
 add_executable(tests tests/main.cpp)
