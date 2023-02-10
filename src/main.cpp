@@ -36,22 +36,22 @@ void initialize()
 
 int main(int argc, char *argv[])
 {
-    // initialize();
-
-    std::this_thread::sleep_for(std::chrono::seconds(0));
-    if (auto key = getenv("ChatGPT_KEY"); key)
-        ChatGPT_KEY = key;
-    else
-        throw runtime_error("Please run export ChatGPT_KEY='Your Key' first.");
-
     try
     {
+        // initialize();
+
+        std::this_thread::sleep_for(std::chrono::seconds(0));
+        if (auto key = getenv("ChatGPT_KEY"); key)
+            ChatGPT_KEY = key;
+        else
+            throw runtime_error("Please run \"export ChatGPT_KEY='Your Key'\" first.");
+
         auto http_client = Http::Client::create();
         string prompt;
 
         do
         {
-            cout << color::YELLOW << "Please input prompt for ChatGPT :" << color::RESET << endl;
+            cout << color::YELLOW << "Please input prompts for ChatGPT :\n" << color::RESET << endl;
             char *cmd = readline("");
 
             prompt = cmd;
@@ -149,12 +149,18 @@ Task<void> run_chat_gpt(Http::client_ptr client, string_view prompt)
         }
         else
         {
-            cout << "\nchatGPT : " << obj["error"].as_object()["message"].as_string() << endl;
+            cout << "\nChatGPT : " << obj["error"].as_object()["message"].as_string() << endl;
         }
     }
     catch (const boost::system::system_error &ec)
     {
-        std::cerr << ec.code() << endl;
+        std::string error  = ec.what();
+        auto pos = error.find_first_of('[');
+        
+        if(pos != std::string::npos)
+            error = error.substr(0, pos);
+
+        std::cerr << ec.what() << endl;
     }
     catch (const std::exception &e)
     {

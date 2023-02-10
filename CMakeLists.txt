@@ -27,4 +27,4 @@ add_executable(tests tests/main.cpp)
 target_link_libraries(tests http_client gtest)
 
 # Install all targets
-install(TARGETS http_client chat tests)
+install(TARGETS http_client chat)
