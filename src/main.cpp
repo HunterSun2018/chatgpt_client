@@ -51,11 +51,12 @@ int main(int argc, char *argv[])
 
         do
         {
-            cout << color::YELLOW << "Please input prompts for ChatGPT :\n" << color::RESET << endl;
+            cout << color::YELLOW << "Please input prompts for ChatGPT :\n"
+                 << color::RESET << endl;
             char *cmd = readline("");
 
             prompt = cmd;
-            if (prompt == "quit")
+            if (prompt == "quit" || prompt == "exit")
                 break;
 
             add_history(cmd);
@@ -101,20 +102,24 @@ std::size_t replace_all(std::string &inout, std::string_view what, std::string_v
 
     return count;
 }
-// curl https://api.openai.com/v1/completions \
-// -H "Content-Type: application/json" \
-// -H "Authorization: Bearer YOUR_API_KEY" \
-// -d '{"model": "text-davinci-003", "prompt": "Say this is a test", "temperature": 0, "max_tokens": 2000}'
+// curl https://api.openai.com/v1/chat/completions \
+//   -H "Authorization: YOUR_API_KEY" \
+//   -H "Content-Type: application/json" \
+//   -d '{"model": "gpt-3.5-turbo", "messages": [{"role": "user", "content": "Say this is a test"}]}'
 Task<void> run_chat_gpt(Http::client_ptr client, string_view prompt)
 {
-    string url = "https://api.openai.com/v1/completions";
+    string url = "https://api.openai.com/v1/chat/completions";
 
     using namespace boost::json;
-    object obj;
-    obj["model"] = "text-davinci-003";
-    obj["prompt"] = prompt;
-    obj["temperature"] = 0;
-    obj["max_tokens"] = 2000;
+    object obj, message;
+
+    message["role"] = "user";
+    message["content"] = prompt;
+
+    obj["model"] = "gpt-3.5-turbo";
+    obj["messages"] = boost::json::array({message});
+    // obj["temperature"] = 0;
+    // obj["max_tokens"] = 2000;
     ostringstream oss;
     oss << obj;
 
@@ -122,6 +127,8 @@ Task<void> run_chat_gpt(Http::client_ptr client, string_view prompt)
     req.header["Content-Type"] = "application/json";
     req.header["Authorization"] = "Bearer " + ChatGPT_KEY;
     req.body = oss.str();
+
+    // cout << req.body << endl;
 
     try
     {
@@ -137,7 +144,7 @@ Task<void> run_chat_gpt(Http::client_ptr client, string_view prompt)
         {
             for (auto item : obj["choices"].as_array())
             {
-                std::string text = item.as_object()["text"].as_string().data();
+                std::string text = item.as_object()["message"].as_object()["content"].as_string().data();
 
                 replace_all(text, "\\n", "\n");
 
@@ -154,10 +161,10 @@ Task<void> run_chat_gpt(Http::client_ptr client, string_view prompt)
     }
     catch (const boost::system::system_error &ec)
     {
-        std::string error  = ec.what();
+        std::string error = ec.what();
         auto pos = error.find_first_of('[');
-        
-        if(pos != std::string::npos)
+
+        if (pos != std::string::npos)
             error = error.substr(0, pos);
 
         std::cerr << ec.what() << endl;
