@@ -72,6 +72,7 @@
         "__config": "cpp",
         "__debug": "cpp",
         "__tuple": "cpp",
-        "__verbose_abort": "cpp"
+        "__verbose_abort": "cpp",
+        "regex": "cpp"
     }
 }

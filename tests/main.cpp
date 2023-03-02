@@ -13,7 +13,7 @@ TEST(MyTestSuitName, MyTestCaseName)
     EXPECT_EQ(1, actual) << "Should be equal to one";
 }
 
-TEST(MyTestSuitName, HttpClientCase)
+TEST(MyTestSuitName, HttpClientCase1)
 {
     auto code = [](string_view url) -> Task<int>
     {
@@ -24,6 +24,19 @@ TEST(MyTestSuitName, HttpClientCase)
         co_return response.status_code;
     }("http://bing.com")
                                            .get();
+
+    EXPECT_EQ(200, code) << "Should be equal to http statue code 200";
+}
+
+TEST(MyTestSuitName, HttpClientCase2)
+{
+    auto http_client = Http::Client::create();
+    auto url = "https://cn.bing.com:443/search?q=hello";
+
+    cout << "A http request is getting started." << endl;
+    auto response = http_client->await_get(url).get();
+
+    auto code = response.status_code;
 
     EXPECT_EQ(200, code) << "Should be equal to http statue code 200";
 }
