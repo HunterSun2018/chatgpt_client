@@ -8,3 +8,7 @@ A ChatGPT client implemented by c++ 20 coroutine and boost beast
 # Build
 cmake . -Bbuild -GNinja  
 cd build && ninja
+
+# Run
+exprot CHATGPT_KEY=YOUR_API_KEY
+./chat
