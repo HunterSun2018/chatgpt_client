@@ -10,5 +10,5 @@ cmake . -Bbuild -GNinja
 cd build && ninja
 
 # Run
-exprot CHATGPT_KEY=YOUR_API_KEY
+exprot CHATGPT_KEY=YOUR_API_KEY  
 ./chat
