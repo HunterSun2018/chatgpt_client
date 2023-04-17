@@ -1,2 +1,2 @@
-# coro_http_client
+# ChatGPT Client
 A ChatGPT client implemented by c++ 20 coroutine and boost beast
