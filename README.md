@@ -6,5 +6,5 @@ A ChatGPT client implemented by c++ 20 coroutine and boost beast
 2. Download boost 1.8.1 to folder $HOME 
 
 # Build
-cmake . -Bbuild -GNinja
+cmake . -Bbuild -GNinja  
 cd build && ninja
