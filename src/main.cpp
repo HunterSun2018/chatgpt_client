@@ -119,7 +119,7 @@ Task<void> run_chat_gpt(Http::client_ptr client, string_view prompt)
     obj["model"] = "gpt-3.5-turbo";
     obj["messages"] = boost::json::array({message});
     // obj["temperature"] = 0;
-    // obj["max_tokens"] = 2000;
+    obj["max_tokens"] = 5000;
     ostringstream oss;
     oss << obj;
 

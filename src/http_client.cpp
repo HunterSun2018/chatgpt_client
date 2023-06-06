@@ -39,26 +39,27 @@ namespace Http
     static net::io_context _ioc;
     static net::io_context::work worker(_ioc); // keep ioc.run() alive until ioc calls function stop
     static std::thread dispatch([]()
-                                {
-                                     dispatch.detach();
+        {
+            dispatch.detach();
 
-                                     load_root_certificates(_ctx);
+            load_root_certificates(_ctx);
 
-                                     // Verify the remote server's certificate
-                                     //_ctx.set_verify_mode(ssl::verify_none);
-                                     try
-                                     {
-                                         //clog << "The io dispatch thread is getting startted." << endl;
-                                         _ioc.run();
-                                         //clog << "The io dispatch thread is getting ended." << endl;
-                                     }
-                                     catch (const std::exception &e)
-                                     {
-                                         std::cerr << e.what() << '\n';
-                                     } });
+            // Verify the remote server's certificate
+            //_ctx.set_verify_mode(ssl::verify_none);
+            try
+            {
+                //clog << "The io dispatch thread is getting startted." << endl;
+                _ioc.run();
+                //clog << "The io dispatch thread is getting ended." << endl;
+            }
+            catch (const std::exception& e)
+            {
+                std::cerr << e.what() << '\n';
+            }
+        });
 
-    static std::condition_variable _cv;
-    static std::mutex _cv_m;
+    // static std::condition_variable _cv;
+    // static std::mutex _cv_m;
 
     class ClientImp : public Client
     {
@@ -71,7 +72,7 @@ namespace Http
          * tuple<protocol, hostname, port, target
          */
         static tuple<string, string, string, string>
-        parse_url(const string &url)
+            parse_url(const string& url)
         {
             // const std::regex url_regex("(https?)://([^/ :]+):?([^/ ]*)(/?[^ #?]*)\\x3f?([^ #]*)#?([^ ]*)");
             const std::regex url_regex("(https?)://([^/ :]+):?([^/ ]*)((/?[^ #?]*)\\x3f?([^ #]*)#?([^ ]*))");
@@ -99,16 +100,16 @@ namespace Http
                 return make_tuple<>(protocol, hostname, port, target);
             }
             else
-                return {};
+                throw runtime_error("cannot parse url format");
         }
 
         // Performs an HTTP GET and return the response
         static net::awaitable<void>
-        do_session(
-            std::string host,
-            std::string port,
-            const request req,
-            beast::http::verb method)
+            do_session(
+                std::string host,
+                std::string port,
+                const request req,
+                beast::http::verb method)
         {
             //  These objects perform our I/O
             auto resolver = net::use_awaitable.as_default_on(tcp::resolver(co_await net::this_coro::executor));
@@ -157,12 +158,12 @@ namespace Http
 
         // Performs an HTTPS request and return the response
         static net::awaitable<std::string>
-        do_session(
-            ssl::context &ctx,
-            std::string host,
-            std::string port,
-            request req,
-            uint timeout_seconds = 30)
+            do_session(
+                ssl::context& ctx,
+                std::string host,
+                std::string port,
+                request req,
+                uint timeout_seconds = 30)
         {
             // These objects perform our I/O
             // They use an executor with a default completion token of use_awaitable
@@ -176,7 +177,7 @@ namespace Http
             // We construct the ssl stream from the already rebound tcp_stream.
             beast::ssl_stream<tcp_stream> stream{
                 net::use_awaitable.as_default_on(beast::tcp_stream(co_await net::this_coro::executor)),
-                ctx};
+                    ctx};
 
             // Set SNI Hostname (many hosts need this to handshake successfully)
             if (!SSL_set_tlsext_host_name(stream.native_handle(), host.c_str()))
@@ -234,13 +235,13 @@ namespace Http
         }
 
         static void
-        http_request(std::string const &host,
-                     std::string const &port,
-                     const request &req,
-                     uint timeout_seconds,
-                     bool is_ssl,
+            http_request(std::string const& host,
+                std::string const& port,
+                const request& req,
+                uint timeout_seconds,
+                bool is_ssl,
 
-                     function<void(std::exception_ptr e, string &&body)> func)
+                function<void(std::exception_ptr e, string&& body)> func)
         {
             if (is_ssl)
             {
@@ -253,7 +254,7 @@ namespace Http
                     do_session(_ctx, host, port, req, timeout_seconds),
                     // If the awaitable exists with an exception, it gets delivered here as `e`.
                     // This can happen for regular errors, such as connection drops.
-                    [=](std::exception_ptr e, string &&body)
+                    [=](std::exception_ptr e, string&& body)
                     {
                         func(e, std::move(body));
                     });
@@ -261,19 +262,19 @@ namespace Http
             else
             {
                 net::co_spawn(_ioc,
-                              do_session(host, port, req, beast::http::verb::get),
-                              [](std::exception_ptr e)
-                              {
-                                  if (e)
-                                      try
-                                      {
-                                          std::rethrow_exception(e);
-                                      }
-                                      catch (std::exception &e)
-                                      {
-                                          std::cerr << "Error: " << e.what() << endl;
-                                      }
-                              });
+                    do_session(host, port, req, beast::http::verb::get),
+                    [](std::exception_ptr e)
+                    {
+                        if (e)
+                            try
+                        {
+                            std::rethrow_exception(e);
+                        }
+                        catch (std::exception& e)
+                        {
+                            std::cerr << "Error: " << e.what() << endl;
+                        }
+                    });
             }
         }
 
@@ -294,18 +295,18 @@ namespace Http
                     auto [protocol, host, port, target] = parse_url(_url);
 
                     // Set up an HTTP GET request message
-                    request req{http::verb::get, target, version};
+                    request req{ http::verb::get, target, version };
                     req.set(http::field::host, host);
                     req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
 
                     // Launch the asynchronous operation
                     http_request(host, port, req, _timeout_seconds,
-                                 protocol == "https" ? true : false,
-                                 [&, h](exception_ptr e, string &&body)
-                                 {
-                                     _response.body = std::move(body);
-                                     h.resume();
-                                 });
+                        protocol == "https" ? true : false,
+                        [&, h](exception_ptr e, string&& body)
+                        {
+                            _response.body = std::move(body);
+                            h.resume();
+                        });
                 }
 
                 Response await_resume()
@@ -314,12 +315,12 @@ namespace Http
                 }
             };
 
-            co_return co_await awaitable{url.data(), timeout_seconds};
+            co_return co_await awaitable{ url.data(), timeout_seconds };
         }
 
         virtual Task<Response> await_post(std::string_view url,
-                                          const Request &request,
-                                          uint timeout_seconds) override
+            const Request& request,
+            uint timeout_seconds) override
         {
             Response response;
 
@@ -352,13 +353,13 @@ namespace Http
 
                     // Launch the asynchronous operation
                     http_request(host, port, req, _timeout_seconds,
-                                 protocol == "https" ? true : false,
-                                 [&, h](exception_ptr e, string &&body)
-                                 {
-                                     _e = e;
-                                     _response.body = std::move(body);
-                                     h.resume();
-                                 });
+                        protocol == "https" ? true : false,
+                        [&, h](exception_ptr e, string&& body)
+                        {
+                            _e = e;
+                            _response.body = std::move(body);
+                            h.resume();
+                        });
                 }
 
                 Response await_resume()
@@ -370,7 +371,7 @@ namespace Http
                 }
             };
 
-            co_return co_await awaitable{url.data(), request, timeout_seconds};
+            co_return co_await awaitable{ url.data(), request, timeout_seconds };
         }
     };
 
