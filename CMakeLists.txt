@@ -27,4 +27,6 @@ add_executable(tests tests/main.cpp)
 target_link_libraries(tests http_client gtest)
 
 # Install all targets
-install(TARGETS http_client chat)
+install(TARGETS http_client chat )
+set(PUBLIC_HEADER src/co_helper.hpp src/http_client.hpp)
+install(FILES ${PUBLIC_HEADER} DESTINATION include)
