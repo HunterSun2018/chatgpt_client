@@ -35,7 +35,7 @@ using namespace std;
 namespace Http
 {
     // The SSL context is required, and holds certificates
-    ssl::context _ctx{ssl::context::tlsv12_client};
+    ssl::context _ctx{ ssl::context::tlsv12_client };
     static net::io_context _ioc;
     static net::io_context::work worker(_ioc); // keep ioc.run() alive until ioc calls function stop
     static std::thread dispatch([]()
@@ -68,8 +68,7 @@ namespace Http
          * @brief parse a url
          *
          * @param url
-         * @return tuple<string, string>
-         * tuple<protocol, hostname, port, target
+         * @return tuple<protocol, hostname, port, target>
          */
         static tuple<string, string, string, string>
             parse_url(const string& url)
@@ -104,8 +103,8 @@ namespace Http
         }
 
         // Performs an HTTP GET and return the response
-        static net::awaitable<void>
-            do_session(
+        static net::awaitable<std::string>
+            do_http_session(
                 std::string host,
                 std::string port,
                 const request req,
@@ -154,11 +153,12 @@ namespace Http
 
             // If we get here then the connection is closed gracefully
             // res.body().;
+            co_return beast::buffers_to_string(res.body().data());
         }
 
         // Performs an HTTPS request and return the response
         static net::awaitable<std::string>
-            do_session(
+            do_https_session(
                 ssl::context& ctx,
                 std::string host,
                 std::string port,
@@ -177,7 +177,7 @@ namespace Http
             // We construct the ssl stream from the already rebound tcp_stream.
             beast::ssl_stream<tcp_stream> stream{
                 net::use_awaitable.as_default_on(beast::tcp_stream(co_await net::this_coro::executor)),
-                    ctx};
+                    ctx };
 
             // Set SNI Hostname (many hosts need this to handshake successfully)
             if (!SSL_set_tlsext_host_name(stream.native_handle(), host.c_str()))
@@ -251,7 +251,7 @@ namespace Http
                 // Launch the asynchronous operation
                 net::co_spawn(
                     _ioc,
-                    do_session(_ctx, host, port, req, timeout_seconds),
+                    do_https_session(_ctx, host, port, req, timeout_seconds),
                     // If the awaitable exists with an exception, it gets delivered here as `e`.
                     // This can happen for regular errors, such as connection drops.
                     [=](std::exception_ptr e, string&& body)
@@ -262,18 +262,10 @@ namespace Http
             else
             {
                 net::co_spawn(_ioc,
-                    do_session(host, port, req, beast::http::verb::get),
-                    [](std::exception_ptr e)
+                    do_http_session(host, port, req, beast::http::verb::get),
+                    [=](std::exception_ptr e, string&& body)
                     {
-                        if (e)
-                            try
-                        {
-                            std::rethrow_exception(e);
-                        }
-                        catch (std::exception& e)
-                        {
-                            std::cerr << "Error: " << e.what() << endl;
-                        }
+                        func(e, std::move(body));
                     });
             }
         }
@@ -286,6 +278,7 @@ namespace Http
                 string _url;
                 uint _timeout_seconds;
                 Response _response;
+                exception_ptr _e;
 
                 bool await_ready() { return false; }
                 void await_suspend(std::coroutine_handle<> h)
@@ -304,13 +297,17 @@ namespace Http
                         protocol == "https" ? true : false,
                         [&, h](exception_ptr e, string&& body)
                         {
+                            _e = e;
                             _response.body = std::move(body);
+
                             h.resume();
                         });
                 }
 
                 Response await_resume()
                 {
+                    if (_e)
+                        std::rethrow_exception(_e);
                     return _response;
                 }
             };
@@ -341,7 +338,7 @@ namespace Http
                     auto [protocol, host, port, target] = parse_url(_url);
 
                     // Set up an HTTP GET request message
-                    http::request<http::string_body> req{http::verb::post, target, version};
+                    http::request<http::string_body> req{ http::verb::post, target, version };
                     req.set(http::field::host, host);
                     req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
                     req.set(http::field::content_length, to_string(_request.body.length()));
@@ -378,25 +375,6 @@ namespace Http
     std::shared_ptr<Client>
         Client::create(/* args */)
     {
-        // static std::jthread dispatch([]()
-        //                              {
-
-        //                              // load_root_certificates(_ctx);
-
-        //                              // Verify the remote server's certificate
-        //                              //_ctx.set_verify_mode(ssl::verify_none);
-        //                              try
-        //                              {
-        //                                  clog << "The io dispatch thread is getting startted." << endl;
-        //                                  _ioc.run();
-        //                                  //clog << "The io dispatch thread is getting ended." << endl;
-        //                              }
-        //                              catch (const std::exception &e)
-        //                              {
-        //                                  std::cerr << e.what() << '\n';
-        //                              } });
-        // dispatch.detach();
-
         return make_shared<ClientImp>();
     }
 }
