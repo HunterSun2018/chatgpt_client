@@ -1,7 +1,7 @@
 #include <iostream>
 #include <string_view>
 #include <gtest/gtest.h>
-#include "http_client.hpp"
+#include "co_http_client.hpp"
 
 using namespace std;
 
@@ -17,7 +17,7 @@ TEST(MyTestSuitName, HttpClientCase1)
 {
     auto code = [](string_view url) -> Task<int>
     {
-        auto http_client = Http::Client::create();
+        auto http_client = co_http::Client::create();
 
         auto response = co_await http_client->await_get(url);
 
@@ -30,7 +30,7 @@ TEST(MyTestSuitName, HttpClientCase1)
 
 TEST(MyTestSuitName, HttpClientCase2)
 {
-    auto http_client = Http::Client::create();
+    auto http_client = co_http::Client::create();
     auto url = "https://cn.bing.com:443/search?q=hello";
 
     cout << "A http request is getting started." << endl;

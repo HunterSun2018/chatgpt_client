@@ -28,11 +28,11 @@ using tcp = boost::asio::ip::tcp; // from <boost/asio/ip/tcp.hpp>
 using request = http::request<http::string_body>;
 
 #include "root_certificates.hpp"
-#include "http_client.hpp"
+#include "co_http_client.hpp"
 
 using namespace std;
 
-namespace Http
+namespace co_http
 {
     // The SSL context is required, and holds certificates
     ssl::context _ctx{ ssl::context::tlsv12_client };

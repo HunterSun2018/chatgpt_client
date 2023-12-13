@@ -1,5 +1,5 @@
 #include <iostream>
-#include <http_client.hpp>
+#include <co_http_client.hpp>
 
 Task<void> test();
 using namespace std;
@@ -13,7 +13,7 @@ int main(int argc, char const* argv[])
 
 Task<void> test()
 {
-    auto client = Http::Client::create();
+    auto client = co_http::Client::create();
 
     auto response = co_await client->await_get("https://cn.bing.com/");
 

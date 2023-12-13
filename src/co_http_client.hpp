@@ -5,7 +5,7 @@
 #include <memory>
 #include "co_helper.hpp"
 
-namespace Http
+namespace co_http
 {
     struct Request
     {

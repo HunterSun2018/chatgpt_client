@@ -10,11 +10,11 @@
 #include <fmt/format.h>
 #include <boost/json/src.hpp>
 #include "co_helper.hpp"
-#include "http_client.hpp"
+#include "co_http_client.hpp"
 
 using namespace std;
 
-Task<void> run_chat_gpt(Http::client_ptr client, string_view prompt);
+Task<void> run_chat_gpt(co_http::client_ptr client, string_view prompt);
 string ChatGPT_KEY;
 
 namespace color
@@ -46,7 +46,7 @@ int main(int argc, char *argv[])
         else
             throw runtime_error("Please run \"export ChatGPT_KEY='Your Key'\" first.");
 
-        auto http_client = Http::Client::create();
+        auto http_client = co_http::Client::create();
         string prompt;
 
         do
@@ -80,7 +80,7 @@ int main(int argc, char *argv[])
 
 void run_test(string_view url)
 {
-    auto http_client = Http::Client::create();
+    auto http_client = co_http::Client::create();
     // auto url = "https://cn.bing.com:443/search?q=hello"
 
     cout << "A http request is getting started." << endl;
@@ -106,7 +106,7 @@ std::size_t replace_all(std::string &inout, std::string_view what, std::string_v
 //   -H "Authorization: YOUR_API_KEY" \
 //   -H "Content-Type: application/json" \
 //   -d '{"model": "gpt-3.5-turbo", "messages": [{"role": "user", "content": "Say this is a test"}]}'
-Task<void> run_chat_gpt(Http::client_ptr client, string_view prompt)
+Task<void> run_chat_gpt(co_http::client_ptr client, string_view prompt)
 {
     string url = "https://api.openai.com/v1/chat/completions";
 
@@ -123,7 +123,7 @@ Task<void> run_chat_gpt(Http::client_ptr client, string_view prompt)
     ostringstream oss;
     oss << obj;
 
-    Http::Request req;
+    co_http::Request req;
     req.header["Content-Type"] = "application/json";
     req.header["Authorization"] = "Bearer " + ChatGPT_KEY;
     req.body = oss.str();

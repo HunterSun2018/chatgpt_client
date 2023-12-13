@@ -73,6 +73,17 @@
         "__debug": "cpp",
         "__tuple": "cpp",
         "__verbose_abort": "cpp",
-        "regex": "cpp"
+        "regex": "cpp",
+        "memory_resource": "cpp",
+        "iostream": "cpp",
+        "__nullptr": "cpp",
+        "__bit_reference": "cpp",
+        "__errc": "cpp",
+        "__locale": "cpp",
+        "__node_handle": "cpp",
+        "__threading_support": "cpp",
+        "__tree": "cpp",
+        "ios": "cpp",
+        "locale": "cpp"
     }
 }
