@@ -1,5 +1,5 @@
-# ChatGPT Client
-A ChatGPT client implemented by c++ 20 coroutine and Beast of Boost
+# A Http Client 
+A HTTP client implemented by c++ 20 coroutine and Beast of Boost
 
 ## Requirements
 1. sudo apt install cmake ninja-build libgtest-dev libreadline-dev libfmt-dev
