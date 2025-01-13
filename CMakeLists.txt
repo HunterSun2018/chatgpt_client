@@ -5,7 +5,7 @@ project(test)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED true)
 
-include_directories(~/boost_1_81_0)
+include_directories(~/boost_1_84_0)
 
 # Library http_client
 add_library(co_http_client SHARED src/co_http_client.cpp)

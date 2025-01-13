@@ -26,9 +26,9 @@ namespace co_http
 
         virtual ~Client() {}
 
-        virtual Task<Response> await_get(std::string_view url, uint timeout_seconds = 30) = 0;
+        virtual Task<Response> await_get(std::string_view url, const Request &request = {}, uint timeout_seconds = 30) = 0;
 
-        virtual Task<Response> await_post(std::string_view url, const Request& request, uint timeout_seconds = 30) = 0;
+        virtual Task<Response> await_post(std::string_view url, const Request &request, uint timeout_seconds = 30) = 0;
     };
 
     using client_ptr = std::shared_ptr<Client>;

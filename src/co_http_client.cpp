@@ -270,13 +270,14 @@ namespace co_http
             }
         }
 
-        virtual Task<Response> await_get(std::string_view url, uint timeout_seconds) override
+        virtual Task<Response> await_get(std::string_view url, const Request& request, uint timeout_seconds) override
         {
             struct awaitable
             {
                 // net::io_context &ioc;
                 string _url;
                 uint _timeout_seconds;
+                Request _request;
                 Response _response;
                 exception_ptr _e;
 
@@ -288,9 +289,13 @@ namespace co_http
                     auto [protocol, host, port, target] = parse_url(_url);
 
                     // Set up an HTTP GET request message
-                    request req{ http::verb::get, target, version };
+                    http::request<http::string_body> req{ http::verb::get, target, version };
                     req.set(http::field::host, host);
                     req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
+                    for (auto iter : _request.header)
+                    {
+                        req.set(iter.first, iter.second);
+                    }
 
                     // Launch the asynchronous operation
                     http_request(host, port, req, _timeout_seconds,
@@ -312,7 +317,7 @@ namespace co_http
                 }
             };
 
-            co_return co_await awaitable{ url.data(), timeout_seconds };
+            co_return co_await awaitable{ url.data(), timeout_seconds, request };
         }
 
         virtual Task<Response> await_post(std::string_view url,
