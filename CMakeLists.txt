@@ -1,11 +1,11 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.10)
 
 project(test)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED true)
 
-include_directories(~/boost_1_84_0)
+# include_directories(~/boost_1_84_0)
 
 # Library http_client
 add_library(co_http_client SHARED src/co_http_client.cpp)
@@ -17,7 +17,7 @@ include_directories( src/)
 # Executable tests
 add_executable(tests tests/main.cpp)
 
-target_link_libraries(tests co_http_client gtest)
+target_link_libraries(tests co_http_client gtest boost_iostreams)
 
 # Install all targets
 install(TARGETS co_http_client)

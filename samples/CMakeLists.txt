@@ -7,7 +7,7 @@ add_executable(bing-client bing_client/main.cpp)
 
 target_link_libraries(bing-client co_http_client)
 
-include_directories(~/boost_1_81_0)
+include_directories(~/boost_1_84_0)
 # Executable client
 add_executable(chat chatgpt_client/main.cpp)
 

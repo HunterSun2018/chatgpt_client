@@ -1,8 +1,9 @@
 #include <iostream>
 #include <co_http_client.hpp>
 
-Task<void> test();
 using namespace std;
+
+Task<void> test();
 
 int main(int argc, char const* argv[])
 {

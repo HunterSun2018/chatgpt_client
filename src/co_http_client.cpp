@@ -17,6 +17,11 @@
 #include <boost/asio/awaitable.hpp>
 #include <boost/asio/co_spawn.hpp>
 #include <boost/asio/spawn.hpp>
+#include <boost/iostreams/stream.hpp>
+#include <boost/iostreams/filtering_stream.hpp>
+#include <boost/iostreams/filter/zlib.hpp>
+#include <boost/iostreams/filter/gzip.hpp>
+#include <boost/iostreams/copy.hpp>
 // #include <boost/asio/detached.hpp>
 // #include <boost/asio/use_awaitable.hpp>
 
@@ -26,6 +31,7 @@ namespace net = boost::asio;      // from <boost/asio.hpp>
 namespace ssl = boost::asio::ssl; // from <boost/asio/ssl.hpp>
 using tcp = boost::asio::ip::tcp; // from <boost/asio/ip/tcp.hpp>
 using request = http::request<http::string_body>;
+using response = http::response<http::dynamic_body>;
 
 #include "root_certificates.hpp"
 #include "co_http_client.hpp"
@@ -35,11 +41,11 @@ using namespace std;
 namespace co_http
 {
     // The SSL context is required, and holds certificates
-    ssl::context _ctx{ ssl::context::tlsv12_client };
+    ssl::context _ctx{ssl::context::tlsv12_client};
     static net::io_context _ioc;
     static net::io_context::work worker(_ioc); // keep ioc.run() alive until ioc calls function stop
     static std::thread dispatch([]()
-        {
+                                {
             dispatch.detach();
 
             load_root_certificates(_ctx);
@@ -55,8 +61,7 @@ namespace co_http
             catch (const std::exception& e)
             {
                 std::cerr << e.what() << '\n';
-            }
-        });
+            } });
 
     // static std::condition_variable _cv;
     // static std::mutex _cv_m;
@@ -71,7 +76,7 @@ namespace co_http
          * @return tuple<protocol, hostname, port, target>
          */
         static tuple<string, string, string, string>
-            parse_url(const string& url)
+        parse_url(const string &url)
         {
             // const std::regex url_regex("(https?)://([^/ :]+):?([^/ ]*)(/?[^ #?]*)\\x3f?([^ #]*)#?([^ ]*)");
             const std::regex url_regex("(https?)://([^/ :]+):?([^/ ]*)((/?[^ #?]*)\\x3f?([^ #]*)#?([^ ]*))");
@@ -103,12 +108,12 @@ namespace co_http
         }
 
         // Performs an HTTP GET and return the response
-        static net::awaitable<std::string>
-            do_http_session(
-                std::string host,
-                std::string port,
-                const request req,
-                beast::http::verb method)
+        static net::awaitable<response>
+        do_http_session(
+            std::string host,
+            std::string port,
+            const request req,
+            beast::http::verb method)
         {
             //  These objects perform our I/O
             auto resolver = net::use_awaitable.as_default_on(tcp::resolver(co_await net::this_coro::executor));
@@ -133,7 +138,7 @@ namespace co_http
             beast::flat_buffer b;
 
             // Declare a container to hold the response
-            http::response<http::dynamic_body> res;
+            response res;
 
             // Receive the HTTP response
             co_await http::async_read(stream, b, res);
@@ -153,17 +158,18 @@ namespace co_http
 
             // If we get here then the connection is closed gracefully
             // res.body().;
-            co_return beast::buffers_to_string(res.body().data());
+            // co_return beast::buffers_to_string(res.body().data());
+            co_return res;
         }
 
         // Performs an HTTPS request and return the response
-        static net::awaitable<std::string>
-            do_https_session(
-                ssl::context& ctx,
-                std::string host,
-                std::string port,
-                request req,
-                uint timeout_seconds = 30)
+        static net::awaitable<response>
+        do_https_session(
+            ssl::context &ctx,
+            std::string host,
+            std::string port,
+            request req,
+            uint timeout_seconds = 30)
         {
             // These objects perform our I/O
             // They use an executor with a default completion token of use_awaitable
@@ -177,7 +183,7 @@ namespace co_http
             // We construct the ssl stream from the already rebound tcp_stream.
             beast::ssl_stream<tcp_stream> stream{
                 net::use_awaitable.as_default_on(beast::tcp_stream(co_await net::this_coro::executor)),
-                    ctx };
+                ctx};
 
             // Set SNI Hostname (many hosts need this to handshake successfully)
             if (!SSL_set_tlsext_host_name(stream.native_handle(), host.c_str()))
@@ -208,7 +214,7 @@ namespace co_http
             beast::flat_buffer b;
 
             // Declare a container to hold the response
-            http::response<http::dynamic_body> res;
+            response res;
 
             // Receive the HTTP response
             co_await http::async_read(stream, b, res);
@@ -230,18 +236,19 @@ namespace co_http
             //     throw boost::system::system_error(ec, "shutdown");
             // Response result{res.result_int(),
             //                 beast::buffers_to_string(res.body().data())};
+            // cout << res.result_int() << endl;
 
-            co_return beast::buffers_to_string(res.body().data());
+            // co_return beast::buffers_to_string(res.body().data());
+            co_return res;
         }
 
         static void
-            http_request(std::string const& host,
-                std::string const& port,
-                const request& req,
-                uint timeout_seconds,
-                bool is_ssl,
-
-                function<void(std::exception_ptr e, string&& body)> func)
+        http_request(std::string const &host,
+                     std::string const &port,
+                     const request &req,
+                     uint timeout_seconds,
+                     bool is_ssl,
+                     function<void(std::exception_ptr e, response &&res)> func)
         {
             if (is_ssl)
             {
@@ -254,7 +261,7 @@ namespace co_http
                     do_https_session(_ctx, host, port, req, timeout_seconds),
                     // If the awaitable exists with an exception, it gets delivered here as `e`.
                     // This can happen for regular errors, such as connection drops.
-                    [=](std::exception_ptr e, string&& body)
+                    [=](std::exception_ptr e, response &&body)
                     {
                         func(e, std::move(body));
                     });
@@ -262,15 +269,48 @@ namespace co_http
             else
             {
                 net::co_spawn(_ioc,
-                    do_http_session(host, port, req, beast::http::verb::get),
-                    [=](std::exception_ptr e, string&& body)
-                    {
-                        func(e, std::move(body));
-                    });
+                              do_http_session(host, port, req, beast::http::verb::get),
+                              [=](std::exception_ptr e, response &&body)
+                              {
+                                  // func(e, std::move(body));
+                              });
             }
         }
 
-        virtual Task<Response> await_get(std::string_view url, const Request& request, uint timeout_seconds) override
+        static std::string decode_body(response &res)
+        {
+            string body = beast::buffers_to_string(res.body().data());
+            // decompress with boost's interface
+            boost::iostreams::array_source src(body.data(), body.size());
+            boost::iostreams::filtering_istream is;
+
+            // boost::iostreams::zlib_params zparams{};
+            if (res["Content-Encoding"] == "deflate")
+            {
+                std::clog << "decompressing " << res["Content-Encoding"] << std::endl;
+                std::clog << "-------------------------------------------------" << '\n';
+                is.push(boost::iostreams::zlib_decompressor{}); // deflate
+            }
+            else if (res["Content-Encoding"] == "gzip")
+            {
+                std::clog << "decompressing " << res["Content-Encoding"] << std::endl;
+                std::clog << "-------------------------------------------------" << '\n';
+                is.push(boost::iostreams::gzip_decompressor{}); // gzip
+            }
+            else if (res["Content-Encoding"] == "")
+            {
+                std::clog << "uncompressed " << res["Content-Encoding"] << std::endl;
+                std::clog << "-------------------------------------------------" << '\n';
+            }
+
+            is.push(src);
+            ostringstream oss;
+
+            boost::iostreams::copy(is, oss);
+            return oss.str();
+        }
+
+        virtual Task<Response> await_get(std::string_view url, const Request &request, uint timeout_seconds) override
         {
             struct awaitable
             {
@@ -289,24 +329,27 @@ namespace co_http
                     auto [protocol, host, port, target] = parse_url(_url);
 
                     // Set up an HTTP GET request message
-                    http::request<http::string_body> req{ http::verb::get, target, version };
+                    http::request<http::string_body> req{http::verb::get, target, version};
                     req.set(http::field::host, host);
-                    req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
+                    // req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
                     for (auto iter : _request.header)
                     {
                         req.set(iter.first, iter.second);
                     }
 
+                    clog << req << endl;
+
                     // Launch the asynchronous operation
                     http_request(host, port, req, _timeout_seconds,
-                        protocol == "https" ? true : false,
-                        [&, h](exception_ptr e, string&& body)
-                        {
-                            _e = e;
-                            _response.body = std::move(body);
+                                 protocol == "https" ? true : false,
+                                 [&, h](exception_ptr e, response &&res)
+                                 {
+                                     _e = e;
+                                     _response.status_code = res.result_int();                                     
+                                     _response.body = decode_body(res);
 
-                            h.resume();
-                        });
+                                     h.resume();
+                                 });
                 }
 
                 Response await_resume()
@@ -317,15 +360,13 @@ namespace co_http
                 }
             };
 
-            co_return co_await awaitable{ url.data(), timeout_seconds, request };
+            co_return co_await awaitable{url.data(), timeout_seconds, request};
         }
 
         virtual Task<Response> await_post(std::string_view url,
-            const Request& request,
-            uint timeout_seconds) override
+                                          const Request &request,
+                                          uint timeout_seconds) override
         {
-            Response response;
-
             struct awaitable
             {
                 // net::io_context &ioc;
@@ -343,7 +384,7 @@ namespace co_http
                     auto [protocol, host, port, target] = parse_url(_url);
 
                     // Set up an HTTP GET request message
-                    http::request<http::string_body> req{ http::verb::post, target, version };
+                    http::request<http::string_body> req{http::verb::post, target, version};
                     req.set(http::field::host, host);
                     req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
                     req.set(http::field::content_length, to_string(_request.body.length()));
@@ -355,13 +396,15 @@ namespace co_http
 
                     // Launch the asynchronous operation
                     http_request(host, port, req, _timeout_seconds,
-                        protocol == "https" ? true : false,
-                        [&, h](exception_ptr e, string&& body)
-                        {
-                            _e = e;
-                            _response.body = std::move(body);
-                            h.resume();
-                        });
+                                 protocol == "https" ? true : false,
+                                 [&, h](exception_ptr e, response &&res)
+                                 {
+                                     _e = e;
+                                     _response.status_code = res.result_int();                                     
+                                     _response.body = decode_body(res);
+
+                                     h.resume();
+                                 });
                 }
 
                 Response await_resume()
@@ -373,7 +416,7 @@ namespace co_http
                 }
             };
 
-            co_return co_await awaitable{ url.data(), request, timeout_seconds };
+            co_return co_await awaitable{url.data(), request, timeout_seconds};
         }
     };
 
